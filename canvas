@@ -1,0 +1,181 @@
+#!/opt/anaconda3/bin/python
+
+"""
+plain simple github grid simple_grid rounded_grid heavy_grid mixed_grid double_grid fancy_grid
+outline simple_outline rounded_outline heavy_outline mixed_outline double_outline fancy_outline
+pipe orgtbl asciidoc jira presto pretty psql rst mediawiki moinmoin youtrack html unsafehtml
+latex latex_raw latex_booktabs latex_longtable textile tsv
+"""
+
+from ics import Calendar
+import calendar
+import pandas as pd
+from datetime import datetime, timezone
+from tabulate import tabulate
+import yaml, json
+import Fetch as Fetch
+import re
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+CANVAS_DOMAIN = os.environ.get("CANVAS_DOMAIN")
+CANVAS_TOKEN = os.environ.get("CANVAS_TOKEN")
+
+def highlight(string, color):
+    return "${{color {}}}{}${{color white}}".format(color, string)
+
+courses = Fetch.fetchActiveCourses(CANVAS_DOMAIN, CANVAS_TOKEN)
+deadline_dict = {}
+for course in courses:
+    courseName = course['name']
+    courseId = course['id']
+    endDate = course['end_at']
+    # print(json.dumps(course, indent=4))
+    ccg = course['enrollments'][0]['computed_current_grade'] if course['enrollments'][0]['computed_current_grade'] else "--"
+    ccs = course['enrollments'][0]['computed_current_score'] if course['enrollments'][0]['computed_current_score'] else "--"
+    cfg = course['enrollments'][0]['computed_final_grade'] if course['enrollments'][0]['computed_final_grade'] else "--"
+    cfs = course['enrollments'][0]['computed_final_score'] if course['enrollments'][0]['computed_final_score'] else "--"
+
+    print(tabulate([(courseId, courseName, ccg, ccs, cfg, cfs)], headers=["Course ID", "Course Name", "CCG", "CCS", "CFG", "CFS"], tablefmt="simple"))
+
+    assignments = Fetch.fetchAssignments(courseId, CANVAS_DOMAIN, CANVAS_TOKEN)
+    tableData = []
+    for assignment in assignments:
+        assName = assignment['name']
+        ID = assignment['id']
+        # print(json.dumps(assignment, indent=4))
+        try:
+            evaluation = float(assignment['submission']['score']) / float(assignment['points_possible'])*100
+            scoreString = "{} / {}".format(assignment['submission']['score'], assignment['points_possible'])
+            if assignment['submission']['score']:
+                if evaluation > 90:
+                    scoreString = highlight(scoreString, "green")
+                elif 80 <evaluation < 90:
+                    scoreString = highlight(scoreString, "yellow")
+                elif 70 < evaluation < 80:
+                    scoreString = highlight(scoreString, "orange")
+                else:
+                    scoreString = highlight(scoreString, "red")
+            else:
+                scoreString = "--"
+        except:
+            scoreString = "--"
+
+        try:
+            deadLine = datetime.fromisoformat(assignment['due_at'][:-1]).replace(tzinfo=timezone.utc).astimezone(tz=None)
+            if deadLine.strftime('%Y-%m-%d') in deadline_dict.keys():
+                deadline_dict[deadLine.strftime('%Y-%m-%d')].append({'Course': courseName,
+                                                                     'Assignment': assName,
+                                                                     'Time': deadLine.strftime('%I:%M %p')})
+            else:
+                deadline_dict[deadLine.strftime('%Y-%m-%d')] = [{'Course': courseName,
+                                                                 'Assignment': assName,
+                                                                 'Time': deadLine.strftime('%I:%M %p')}]
+
+            deadLine = deadLine.strftime('%Y-%m-%d %I:%M %p')
+        except TypeError:
+            deadLine = "--"
+
+        submissionTime = assignment['submission']['submitted_at']
+
+        if submissionTime:
+            if not assignment['submission']['late']:
+                status = "${color green}\u2713${color white}"
+            else:
+                status = "${color yellow}!${color white}"
+        else:
+            status = "${color red}\u2717${color white}"
+
+        # print(json.dumps(assignment, indent=4))
+        tableData.append((assName, deadLine, status, scoreString))
+
+    tableData = pd.DataFrame(tableData, columns=["Name", "Deadline", "Status", "Grade"])
+    font_size = 8
+    gap = 4
+    px_conversion = 4 / 5
+    total_offset = 0
+    new_columns = []
+    tableData.loc[0] = ["" for i in range(len(tableData.columns))] # will populate with ----- later
+    tableData = tableData.sort_index().reset_index(drop=True)
+    for column in tableData.columns:
+        cands = [column]
+        cands.extend([tableData.iloc[i][column] for i in range(len(tableData))])
+        max_length = max([len(re.sub("[{\[].*?[}\]]", "", string).replace("$", "")) for string in cands])
+        offset = int((max_length + gap) * font_size * px_conversion)
+        for e in range(len(tableData)):
+
+            if e == 0:
+                tableData.iloc[e][column] = max_length * "-"
+
+            if column == tableData.columns[0]:
+                tableData.iloc[e][column] = "${{goto {}}}{}".format(
+                    int((gap + max_length - len(tableData.iloc[e][column])) * font_size * px_conversion),
+                    tableData.iloc[e][column])
+            else:
+                tableData.iloc[e][column] = "${{goto {}}}{}".format(
+                    int(gap * font_size * px_conversion) + total_offset, tableData.iloc[e][column])
+
+        if column == tableData.columns[0]:
+            new_columns.append(
+                "${{goto {}}}{}".format(int((gap + max_length - len(column)) * font_size * px_conversion), column))
+
+        else:
+            new_columns.append("${{goto {}}}{}".format(int(gap * font_size * px_conversion) + total_offset, column))
+
+        total_offset += offset
+
+    print()
+    print(" ".join(new_columns))
+    for j in range(len(tableData)):
+        print(" ".join(list(tableData.iloc[j])))
+
+# print(json.dumps(deadline_dict, indent=4))
+
+today = datetime.today()
+currentDay = today.day
+currentMonth = today.month
+currentYear = today.year
+
+MONTH_B = datetime(currentYear, currentMonth, 1)
+MONTH_E = datetime(currentYear, currentMonth, (MONTH_B + pd.offsets.MonthEnd(1)).day)
+RANGE = pd.date_range(start=MONTH_B, end=MONTH_E)
+
+MAP = {6: 0, 0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6}
+converted = []
+for d in range(len(RANGE)):
+
+    current_formatted = "[{}]".format(RANGE[d].day) if currentDay==RANGE[d].day else RANGE[d].day
+
+    # Get next closest deadline and create a color (show this as "Upcoming")
+    # make all other deadlines a different color but dont show anything
+
+    day_of_week = MAP[RANGE[d].dayofweek]
+    if RANGE[d].day == 1:
+        for i in range(day_of_week):
+            converted.append("")
+        converted.append(current_formatted)
+
+    elif RANGE[d] == RANGE[-1]:
+        converted.append(current_formatted)
+        for i in range(6 - day_of_week):
+            converted.append("")
+
+    else:
+        converted.append(current_formatted)
+
+table = [ tuple(converted[x:x+7]) for x in range(0, len(converted), 7) ]
+
+df = pd.DataFrame(table, columns=["S", "M", "T", "W", "R", "F", "S"])
+
+print("${voffset 15}${offset 150}Upcoming${hr 1}${voffset 0}${offset 0}")
+print("${voffset -15}"+today.strftime("%B"), currentYear)
+print(df.to_string(index=False)+"${voffset -90}")
+for deadline in deadline_dict.keys():
+    # if datetime.strptime(deadline, '%Y-%m-%d') > today:
+    if True:
+        print("${offset 150}"+deadline+"${stippled_hr 1}")
+        for task in deadline_dict[deadline]:
+            print("${{offset 150}}{}[{}]: {}".format(task['Course'], task['Time'], task['Assignment']))
+print("${voffset 10}")

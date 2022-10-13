@@ -1,0 +1,6 @@
+.env
+.cache*
+*.ics
+*.idea
+mail.json
+__pycache__/
