@@ -9,7 +9,20 @@ conky -c <path/to/conkyrc>
 ```
 
 There are a number of python utilities not linked to the conky config. This is because I'm just playing around with what I can do.
-See the conkyrc for which python scripts are linked.
+See the conkyrc for which python scripts are linked. You'll need to create a `.env` file with the following keys:
+
+```
+CANVAS_DOMAIN=<domain for institution e.g. http://canvas.tamu.edu/>
+CANVAS_TOKEN=<Canvas access token>
+LECTURES_PATH=<path/to/lectures>
+EMAIL=<Edu email address>
+PASSWORD=<Gmail "App password" (requires MFA setup)>
+
+OWM_TOKEN=<>
+
+SPOTIFY_ID = <>
+SPOTIFY_SECRET = <>
+```
 
 Notes (until I can push the changes):
 1) You'll need to adjust paths in conkyrc
