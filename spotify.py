@@ -1,11 +1,14 @@
-import spotipy
+import spotipy # # https://developer.spotify.com/dashboard/applications/b1ba800ad7064644843e21b675069a6c/users
 from spotipy.oauth2 import SpotifyOAuth
 import spotipy.util as util
 import json
-# https://developer.spotify.com/dashboard/applications/b1ba800ad7064644843e21b675069a6c/users
+from dotenv import load_dotenv
+import os
 
-CLIENT_ID = 'b1ba800ad7064644843e21b675069a6c'
-CLIENT_SECRET = 'f9d1f2e2cd694852a0cb81b0dd806906'
+load_dotenv()
+
+CANVAS_DOMAIN = os.environ.get("SPOTIFY_ID")
+CANVAS_TOKEN = os.environ.get("SPOTIFY_SECRET")
 SCOPE= 'user-library-read user-read-playback-state user-read-currently-playing user-read-recently-played user-read-playback-position' # https://developer.spotify.com/documentation/general/guides/authorization/scopes/
 
 
